@@ -34,7 +34,7 @@ def main():
                                                         )
                                            )
         tcp_socket.sendall(encrypted_key)
-        print("Sent encrypted AES key to server.")
+        print("Sent public AES key to server.")
         
         #Send encrypted messages
         try:
@@ -51,5 +51,15 @@ def main():
 
 if __name__ == "__main__":
     main()
-    #TODO - Write code to perform user authentication
-    #TODO - Write code to connect clients together based on unique attributes
+    #TODO - Check when to use EC
+    #TODO - Write code to perform user authentication (log-in)
+    #TODO - Add group messaging
+    #TODO - User authorisation
+    #TODO - Write code to connect clients together based on header details
+    
+    
+    
+    #Functionality:
+        # generate public-private key using RSA-2048
+        # encrypt messages using AES256-GCM.
+        # has a header tag that is used to check integrity (using Galois Field).
