@@ -51,10 +51,10 @@ def main():
 
 if __name__ == "__main__":
     main()
-    #TODO - Check when to use EC
-    #TODO - Write code to perform user authentication (log-in)
-    #TODO - Add group messaging
-    #TODO - User authorisation
+    #TODO - Check when to use EC - Just use RSA (forward-secrecy = meh)
+    #TODO - Write code to perform user authentication (log-in) - concensus. Use UN+PW (salt+hash)?
+    #TODO - Add group messaging - Multicast equivalent of routing algorithm.
+    #TODO - User authorisation - Header stored and attached from DB
     #TODO - Write code to connect clients together based on header details
     
     
@@ -62,4 +62,4 @@ if __name__ == "__main__":
     #Functionality:
         # generate public-private key using RSA-2048
         # encrypt messages using AES256-GCM.
-        # has a header tag that is used to check integrity (using Galois Field).
+        # has a header tag <T> that is used to check integrity (using Galois Field).

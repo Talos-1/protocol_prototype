@@ -39,7 +39,7 @@ def generatePPK():
 def main(generate_public_private_keys=False):
     IP = os.getenv("IP_ADDRESS")
     PORT = int(os.getenv("PORT"))
-    timezone = pytz.timezone("Australia/Adelaide")
+    timezone = pytz.timezone("Australia/Adelaide") #Change TZ based on user location?
 
     if generate_public_private_keys:
         generatePPK()
@@ -90,6 +90,11 @@ def main(generate_public_private_keys=False):
                         print(f"{cur_time}: {decrypted}")
                     except Exception as e:
                         print(f"{cur_time}: Decryption failed: {e}")
+               
+                    try:
+                        conn.sendall("message received")
+                    except Exception as e:
+                        print(f"{cur_time}: acknowledgement failed: {e}")
             print("Connection has closed")
 
 if __name__ == "__main__":
