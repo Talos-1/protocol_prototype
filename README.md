@@ -12,6 +12,7 @@ This is a simple client-server program prototyped in Python to show how a single
 2. This should begin running the server. In another terminal, run the client with: `python3 client.py`
 3: The connection should be established with the client and server along with key exchange. The client can then send and the server will receive. This is indicated with ">" in the client terminal.
 
+```
 User A                User B
   |                      |
   | 1. Send Message       | 6. Receive Message
@@ -41,3 +42,4 @@ User A                User B
      |                      |
   <--------------------------
        Encrypted Message Flow
+```
