@@ -1,103 +1,108 @@
 import socket
+import threading
+import json
 import os
-import base64
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
-from datetime import datetime
 from dotenv import load_dotenv
-import pytz
 
 load_dotenv()
+
+clients = {}  # {username: (conn, aes_key)}
 
 def decrypt_message(encrypted_data: bytes, key: bytes) -> str:
     nonce = encrypted_data[:12]
     ciphertext = encrypted_data[12:]
     aesgcm = AESGCM(key)
-    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-    return plaintext.decode('utf-8')
+    return aesgcm.decrypt(nonce, ciphertext, None).decode()
 
-def generatePPK():
+def encrypt_message(message: str, key: bytes) -> bytes:
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)
+    return nonce + aesgcm.encrypt(nonce, message.encode(), None)
+
+def broadcast_user_list():
+    usernames = list(clients.keys())
+    for user, (conn, key) in clients.items():
+        try:
+            payload = json.dumps({"type": "user_list", "users": usernames})
+            encrypted = encrypt_message(payload, key)
+            conn.sendall(encrypted)
+        except:
+            continue
+
+def handle_client(conn, addr, private_key):
+    try:
+        encrypted_aes_key = conn.recv(256)
+        aes_key = private_key.decrypt(
+            encrypted_aes_key,
+            padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
+        )
+
+        username = conn.recv(1024).decode().strip()
+        clients[username] = (conn, aes_key)
+        broadcast_user_list()
+
+        while True:
+            data = conn.recv(4096)
+            if not data:
+                break
+            try:
+                decrypted = decrypt_message(data, aes_key)
+                payload = json.loads(decrypted)
+
+                to_user = payload.get("to")
+                if to_user in clients:
+                    dest_conn, dest_key = clients[to_user]
+                    encrypted = encrypt_message(json.dumps(payload), dest_key)
+                    dest_conn.sendall(encrypted)
+            except Exception as e:
+                print(f"Decryption error: {e}")
+
+    finally:
+        if username in clients:
+            del clients[username]
+        broadcast_user_list()
+        conn.close()
+
+def generate_keys():
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     public_key = private_key.public_key()
 
-    # Save private key
     with open("private_key.pem", "wb") as f:
         f.write(private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
             encryption_algorithm=serialization.NoEncryption(),
         ))
-
-    # Save public key
     with open("public_key.pem", "wb") as f:
         f.write(public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         ))
 
-def main(generate_public_private_keys=False):
-    IP = os.getenv("IP_ADDRESS")
-    PORT = int(os.getenv("PORT"))
-    timezone = pytz.timezone("Australia/Adelaide") #Change TZ based on user location?
-
-    if generate_public_private_keys:
-        generatePPK()
+def main(generate_keys_flag=False):
+    if generate_keys_flag:
+        generate_keys()
 
     with open("private_key.pem", "rb") as f:
         private_key = serialization.load_pem_private_key(f.read(), password=None)
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_socket:
-        tcp_socket.bind((IP, PORT))
-        tcp_socket.listen(1)
-        print(f"Socket bound to {PORT} and listening...")
+    IP = os.getenv("IP_ADDRESS")
+    PORT = int(os.getenv("PORT"))
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((IP, PORT))
+    server.listen(5)
+    print(f"Server started on {IP}:{PORT}")
 
-        while True:
-            print("Waiting for connection")
-            conn, client = tcp_socket.accept()
-            with conn:
-                print(f"Connected to client IP: {client}")
-
-                #Send PK to client
-                with open("public_key.pem", "rb") as f:
-                    public_key_bytes = f.read()
-                conn.sendall(public_key_bytes)
-                print("Sent public key to client")
-
-                #Receive encrypted AES from client
-                encrypted_aes_key = conn.recv(256)
-                if not encrypted_aes_key:
-                    print("No AES key received, closing connection.")
-                    continue #check if correct
-
-                #decrypt AES key
-                aes_key = private_key.decrypt(encrypted_aes_key,
-                                              padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                                                           algorithm=hashes.SHA256(),
-                                                           label=None,
-                                                           )
-                                              )
-                print("Decrypted AES key successfully")
-
-                while True:
-                    data = conn.recv(1024)
-                    if not data:
-                        break
-
-                    cur_time = timezone.localize(datetime.now())
-                    try:
-                        decrypted = decrypt_message(data, aes_key)
-                        print(f"{cur_time}: {decrypted}")
-                    except Exception as e:
-                        print(f"{cur_time}: Decryption failed: {e}")
-               
-                    try:
-                        conn.sendall("message received")
-                    except Exception as e:
-                        print(f"{cur_time}: acknowledgement failed: {e}")
-            print("Connection has closed")
+    while True:
+        conn, addr = server.accept()
+        with open("public_key.pem", "rb") as f:
+            public_key = f.read()
+        conn.sendall(public_key)
+        threading.Thread(target=handle_client, args=(conn, addr, private_key), daemon=True).start()
 
 if __name__ == "__main__":
     import sys
-    generate_keys = "--gen-keys" in sys.argv
-    main(generate_public_private_keys=generate_keys)
+    main("--gen-keys" in sys.argv)
